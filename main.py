@@ -243,5 +243,32 @@ def result():
     return jsonify(result_state), 200
 
 
+@app.route("/logs/today", methods=["GET"])
+def logs_today():
+    """
+    Bugüne ait pipeline log dosyasını JSON olarak döner.
+    Dosya yoksa basit bir mesaj döner.
+    """
+    ensure_log_dir()
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    log_path = os.path.join(LOG_DIR, f"{date_str}_pipeline.json")
+
+    if not os.path.exists(log_path):
+        return jsonify({
+            "date": date_str,
+            "message": "No log file for today."
+        }), 200
+
+    try:
+        with open(log_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return jsonify(data), 200
+    except Exception as e:
+        return jsonify({
+            "date": date_str,
+            "error": str(e)
+        }), 500
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)

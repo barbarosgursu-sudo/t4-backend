@@ -7,6 +7,50 @@ import os
 app = Flask(__name__)
 
 # --------------------------------------------------
+# LOG HELPERS
+# --------------------------------------------------
+
+LOG_DIR = "logs"
+
+
+def ensure_log_dir() -> None:
+    """Ensure logs directory exists."""
+    if not os.path.exists(LOG_DIR):
+        os.makedirs(LOG_DIR)
+
+
+def log_write(module_name: str, entry: dict) -> None:
+    """
+    T4 backend modül log giriş noktası.
+    Her modül çalıştığında o güne ait log dosyasına ek yapar.
+    """
+    ensure_log_dir()
+
+    date_str = datetime.utcnow().strftime("%Y-%m-%d")
+    log_path = os.path.join(LOG_DIR, f"{date_str}_pipeline.json")
+
+    # Var olan logu oku
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {"date": date_str, "modules": []}
+    else:
+        data = {"date": date_str, "modules": []}
+
+    # Yeni kayıt ekle
+    data["modules"].append({
+        "module": module_name,
+        "ts": datetime.utcnow().isoformat() + "Z",
+        **entry
+    })
+
+    with open(log_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
+# --------------------------------------------------
 # HELPERS
 # --------------------------------------------------
 
@@ -108,6 +152,16 @@ def simulate_pipeline_run() -> None:
         "result": snapshot_result
     })
 
+    # log yaz
+    log_write("snapshot_service", {
+        "status": "OK",
+        "start_time": snap_start,
+        "end_time": snap_end,
+        "retry_count": 0,
+        "error": None,
+        "output_summary": snapshot_result
+    })
+
     # ---------------------------------------------
     # 2–10) diğer modüller (dummy)
     # ---------------------------------------------
@@ -122,6 +176,16 @@ def simulate_pipeline_run() -> None:
             "end_time": m_end,
             "retry_count": 0,
             "error": None
+        })
+
+        # her modül için dummy log
+        log_write(name, {
+            "status": "OK",
+            "start_time": m_start,
+            "end_time": m_end,
+            "retry_count": 0,
+            "error": None,
+            "output_summary": {}
         })
 
     end_time = now_iso()

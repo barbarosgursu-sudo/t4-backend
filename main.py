@@ -1,30 +1,62 @@
 from flask import Flask, jsonify, request
 from datetime import datetime
 from typing import List, Dict, Any
+import json
+import os
 
 app = Flask(__name__)
 
+# --------------------------------------------------
+# HELPERS
+# --------------------------------------------------
 
-# In-memory pipeline state (dummy)
+def now_iso() -> str:
+    """Return current UTC time as ISO string."""
+    return datetime.utcnow().isoformat() + "Z"
+
+
+def load_symbols() -> List[str]:
+    """Load symbols from symbols_list.json"""
+    try:
+        path = "symbols_list.json"
+        if not os.path.exists(path):
+            print("symbols_list.json not found.")
+            return []
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            else:
+                return []
+    except Exception as e:
+        print("load_symbols ERROR:", e)
+        return []
+
+
+# --------------------------------------------------
+# GLOBAL STATE
+# --------------------------------------------------
+
 pipeline_state: Dict[str, Any] = {
     "pipeline_status": "IDLE",
     "start_time": None,
     "end_time": None,
-    "modules": []  # list of {name, status, start_time, end_time, retry_count, error}
+    "modules": []
 }
 
 result_state: Dict[str, Any] = {
     "result_ready": False,
     "last_run": None,
     "radar": [],
-    "core10": []
+    "core10": [],
+    "snapshot_data": {}
 }
 
 
-def now_iso() -> str:
-    """Return current UTC time as ISO string."""
-    return datetime.utcnow().isoformat() + "Z"
-
+# --------------------------------------------------
+# PIPELINE SIMULATION (with real snapshot_service)
+# --------------------------------------------------
 
 def simulate_pipeline_run() -> None:
     """Simulate morning pipeline and fill pipeline_state + result_state."""
@@ -47,7 +79,7 @@ def simulate_pipeline_run() -> None:
 
     modules: List[Dict[str, Any]] = []
 
-    # Mark pipeline as running
+    # Mark pipeline running
     pipeline_state = {
         "pipeline_status": "RUNNING",
         "start_time": start_time,
@@ -55,10 +87,34 @@ def simulate_pipeline_run() -> None:
         "modules": []
     }
 
-    # Simulate each module as OK
-    for name in module_names:
+    # ---------------------------------------------
+    # 1) snapshot_service (GERÇEK)
+    # ---------------------------------------------
+    snap_start = now_iso()
+    symbols = load_symbols()
+    snapshot_result = {
+        "count": len(symbols),
+        "symbols": symbols
+    }
+    snap_end = now_iso()
+
+    modules.append({
+        "name": "snapshot_service",
+        "status": "OK",
+        "start_time": snap_start,
+        "end_time": snap_end,
+        "retry_count": 0,
+        "error": None,
+        "result": snapshot_result
+    })
+
+    # ---------------------------------------------
+    # 2–10) diğer modüller (dummy)
+    # ---------------------------------------------
+    for name in module_names[1:]:
         m_start = now_iso()
         m_end = now_iso()
+
         modules.append({
             "name": name,
             "status": "OK",
@@ -74,10 +130,13 @@ def simulate_pipeline_run() -> None:
     pipeline_state["end_time"] = end_time
     pipeline_state["modules"] = modules
 
-    # Dummy result payload
+    # --------------------------------------------------
+    # BUILD RESULT PAYLOAD
+    # --------------------------------------------------
     result_state = {
         "result_ready": True,
         "last_run": end_time,
+        "snapshot_data": snapshot_result,  # <-- gerçek snapshot burada
         "radar": [
             {"symbol": "AAAA.IS", "score": 0.85},
             {"symbol": "BBBB.IS", "score": 0.80},
@@ -89,6 +148,10 @@ def simulate_pipeline_run() -> None:
     }
 
 
+# --------------------------------------------------
+# ENDPOINTS
+# --------------------------------------------------
+
 @app.route("/", methods=["GET"])
 def root():
     return "T4 backend running", 200
@@ -96,11 +159,10 @@ def root():
 
 @app.route("/runMorningPipeline", methods=["POST"])
 def run_morning_pipeline():
-    # For now, simulate pipeline run synchronously
     simulate_pipeline_run()
     return jsonify({
         "status": "ok",
-        "message": "dummy pipeline completed",
+        "message": "dummy pipeline + real snapshot completed",
         "pipeline_status": pipeline_state["pipeline_status"],
         "start_time": pipeline_state["start_time"],
         "end_time": pipeline_state["end_time"],
@@ -118,5 +180,4 @@ def result():
 
 
 if __name__ == "__main__":
-    # Local testing only; Railway uses gunicorn
     app.run(host="0.0.0.0", port=8080)

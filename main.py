@@ -195,20 +195,60 @@ def simulate_pipeline_run() -> None:
     pipeline_state["modules"] = modules
 
     # --------------------------------------------------
-    # BUILD RESULT PAYLOAD
+    #  ŞEMA SABİTLEME: radar/core10 dummy ama TAM alanlı
     # --------------------------------------------------
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+    # Radar listesi: ilk N sembolden dummy skorlar
+    radar_list: List[Dict[str, Any]] = []
+    for i, sym in enumerate(symbols[:20]):
+        base_score = 60.0 + i  # dummy
+        adj_score = base_score + 2.0
+        radar_list.append({
+            "date": today_str,
+            "symbol": sym,
+            "base_score": base_score,
+            "macro_mult": 1.0,
+            "atr_pct": 0.03,      # %3 dummy
+            "sector": "",
+            "volume": 1_000_000 + i * 10_000,
+            "adj_score": adj_score,
+        })
+
+    # Core10 listesi: radar_list'in ilk 10 elemanından dummy seçim
+    core10_list: List[Dict[str, Any]] = []
+    for rank, r in enumerate(radar_list[:10], start=1):
+        core10_list.append({
+            "date": r["date"],
+            "symbol": r["symbol"],
+            "base_score": r["base_score"],
+            "macro_trend": "GREEN",
+            "macro_mult": r["macro_mult"],
+            "atr_pct": r["atr_pct"],
+            "volume": r["volume"],
+            "rank_today": rank,
+            "adj_score": r["adj_score"],
+            "rr_expected": 2.0,           # dummy RR
+            "oneD_pass": True,
+            "fourH_pass": True,
+            "fourH_score": 60.0,
+            "fourH_state": "4H_OK",
+            "symbol_risk_color": "GREEN",
+            "status": "WATCHING",
+            "days_held": 1,
+            "reason": "ENTER: dummy",
+            "entry_price": 100.0 + rank,  # dummy
+            "last_price": 100.0 + rank,
+            "last_update": today_str + " 10:00:00",
+        })
+
+    # BUILD RESULT PAYLOAD
     result_state = {
         "result_ready": True,
         "last_run": end_time,
         "snapshot_data": snapshot_result,  # <-- gerçek snapshot burada
-        "radar": [
-            {"symbol": "AAAA.IS", "score": 0.85},
-            {"symbol": "BBBB.IS", "score": 0.80},
-        ],
-        "core10": [
-            {"symbol": "CCCC.IS", "rank": 1},
-            {"symbol": "DDDD.IS", "rank": 2},
-        ]
+        "radar": radar_list,
+        "core10": core10_list
     }
 
 

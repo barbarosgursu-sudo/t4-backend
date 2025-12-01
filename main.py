@@ -5,8 +5,6 @@ import json
 import os
 
 from modules.radar_engine import run_radar_engine
-from modules.indicator_engine import run_indicator_engine
-from modules.regime_engine import run_regime_engine
 
 app = Flask(__name__)
 
@@ -97,13 +95,15 @@ result_state: Dict[str, Any] = {
     "result_ready": False,
     "last_run": None,
     "radar": [],
+    "radar_debug": [],
+    "radar_summary": {},
     "core10": [],
     "snapshot_data": {}
 }
 
 
 # --------------------------------------------------
-# PIPELINE SIMULATION (with real snapshot_service)
+# PIPELINE SIMULATION (with real snapshot_service + radar_engine)
 # --------------------------------------------------
 
 def simulate_pipeline_run() -> None:
@@ -116,9 +116,9 @@ def simulate_pipeline_run() -> None:
         "snapshot_service",
         "fetch_engine",
         "repair_engine",
-        "indicator_engine",
+        "indicator_engine",   # şimdilik dummy olarak loglanacak
         "radar_engine",
-        "regime_engine",
+        "regime_engine",      # şimdilik dummy olarak loglanacak
         "core10_engine",
         "tuning_engine",
         "results_aggregator",
@@ -165,24 +165,17 @@ def simulate_pipeline_run() -> None:
         "output_summary": snapshot_result
     })
 
-    # ---------------------------------------------
-    # 2) indicator_engine (ŞİMDİLİK DUMMY, AYRI MODÜL)
-    # ---------------------------------------------
+    # --------------------------------------------------
+    # 2) DUMMY INDICATOR ENGINE → radar_candidates üret
+    #    (Gerçek indicator_engine hazır olana kadar bu blok kullanılacak.)
+    # --------------------------------------------------
     ind_start = now_iso()
-    ind_context: Dict[str, Any] = {
-        "symbols": symbols
-    }
-    ind_output = run_indicator_engine(ind_context)
-    radar_candidates: List[Dict[str, Any]] = ind_output.get("radar_candidates", []) or []
+    radar_candidates: List[Dict[str, Any]] = []
 
-    # *** KRİTİK FALLBACK ***
-    # Eğer indicator_engine sıfır candidate üretirse,
-    # snapshot sembollerinden minimum dummy radar_candidates üret.
-    if not radar_candidates and symbols:
+    if symbols:
         today_str = datetime.utcnow().strftime("%Y-%m-%d")
-        fallback_list: List[Dict[str, Any]] = []
         for i, sym in enumerate(symbols[:10]):
-            fallback_list.append({
+            radar_candidates.append({
                 "date": today_str,
                 "symbol": sym,
                 "volume": 2_000_000 + i * 100_000,  # LIQ_MIN üzerinde
@@ -199,71 +192,42 @@ def simulate_pipeline_run() -> None:
                 "ema20": 98.0 + i,
                 "ema50": 95.0 + i,
             })
-        radar_candidates = fallback_list
 
-        ind_end = now_iso()
-        modules.append({
-            "name": "indicator_engine",
-            "status": "WARN",  # fallback kullanıldı
-            "start_time": ind_start,
-            "end_time": ind_end,
-            "retry_count": 0,
-            "error": None,
-            "result": {
-                "radar_candidates": len(radar_candidates),
-                "fallback_used": True
-            }
-        })
+    ind_end = now_iso()
 
-        log_write("indicator_engine", {
-            "status": "WARN",
-            "start_time": ind_start,
-            "end_time": ind_end,
-            "retry_count": 0,
-            "error": None,
-            "output_summary": {
-                "radar_candidates": len(radar_candidates),
-                "fallback_used": True
-            }
-        })
-    else:
-        ind_end = now_iso()
-        modules.append({
-            "name": "indicator_engine",
-            "status": "OK",
-            "start_time": ind_start,
-            "end_time": ind_end,
-            "retry_count": 0,
-            "error": None,
-            "result": {
-                "radar_candidates": len(radar_candidates),
-                "fallback_used": False
-            }
-        })
+    modules.append({
+        "name": "indicator_engine",
+        "status": "OK",
+        "start_time": ind_start,
+        "end_time": ind_end,
+        "retry_count": 0,
+        "error": None,
+        "result": {
+            "radar_candidates": len(radar_candidates),
+            "dummy": True
+        }
+    })
 
-        log_write("indicator_engine", {
-            "status": "OK",
-            "start_time": ind_start,
-            "end_time": ind_end,
-            "retry_count": 0,
-            "error": None,
-            "output_summary": {
-                "radar_candidates": len(radar_candidates),
-                "fallback_used": False
-            }
-        })
+    log_write("indicator_engine", {
+        "status": "OK",
+        "start_time": ind_start,
+        "end_time": ind_end,
+        "retry_count": 0,
+        "error": None,
+        "output_summary": {
+            "radar_candidates": len(radar_candidates),
+            "dummy": True
+        }
+    })
 
-    # ---------------------------------------------
-    # 3) regime_engine (ŞİMDİLİK SABİT YELLOW)
-    # ---------------------------------------------
+    # --------------------------------------------------
+    # 3) DUMMY REGIME ENGINE → basit regime_info üret
+    # --------------------------------------------------
     reg_start = now_iso()
-    reg_context: Dict[str, Any] = {
-        # ileride config / checkpoint vs. eklenebilir
+    regime_info: Dict[str, Any] = {
+        "regime": "YELLOW"   # şimdilik sabit, ileride gerçek rejim motoru gelecek
     }
-    reg_output = run_regime_engine(reg_context)
     reg_end = now_iso()
-
-    regime_info: Dict[str, Any] = reg_output.get("regime", {})
 
     modules.append({
         "name": "regime_engine",
@@ -335,11 +299,10 @@ def simulate_pipeline_run() -> None:
     })
 
     # ---------------------------------------------
-    # 5) diğer modüller (dummy)
+    # 5) diğer modüller (dummy log)
     # ---------------------------------------------
-    for name in module_names[1:]:
-        # indicator_engine, radar_engine, regime_engine için gerçek kayıt yaptık
-        if name in ("indicator_engine", "radar_engine", "regime_engine"):
+    for name in module_names:
+        if name in ("snapshot_service", "indicator_engine", "radar_engine", "regime_engine"):
             continue
 
         m_start = now_iso()
@@ -370,7 +333,7 @@ def simulate_pipeline_run() -> None:
     pipeline_state["modules"] = modules
 
     # --------------------------------------------------
-    # CORE10 DUMMY (şimdilik radar üstünden)
+    # CORE10 DUMMY (radar üzerinden)
     # --------------------------------------------------
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
 

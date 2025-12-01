@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 import json
 import os
+from modules.radar_engine import run_radar_engine
 
 app = Flask(__name__)
 
@@ -312,3 +313,4 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+

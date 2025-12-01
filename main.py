@@ -3,7 +3,10 @@ from datetime import datetime
 from typing import List, Dict, Any
 import json
 import os
+
 from modules.radar_engine import run_radar_engine
+from modules.indicator_engine import run_indicator_engine
+from modules.regime_engine import run_regime_engine
 
 app = Flask(__name__)
 
@@ -153,7 +156,6 @@ def simulate_pipeline_run() -> None:
         "result": snapshot_result
     })
 
-    # log yaz
     log_write("snapshot_service", {
         "status": "OK",
         "start_time": snap_start,
@@ -163,36 +165,80 @@ def simulate_pipeline_run() -> None:
         "output_summary": snapshot_result
     })
 
-    # --------------------------------------------------
-    # 2) RADAR ENGINE (GERÇEK MOTOR, ŞİMDİLİK DUMMY CANDIDATE)
-    # --------------------------------------------------
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    # ---------------------------------------------
+    # 2) indicator_engine (ŞİMDİLİK DUMMY, AYRI MODÜL)
+    # ---------------------------------------------
+    ind_start = now_iso()
+    ind_context: Dict[str, Any] = {
+        "symbols": symbols
+    }
+    ind_output = run_indicator_engine(ind_context)
+    ind_end = now_iso()
 
-    # Şimdilik: indicator_engine yok, sembollerden dummy radar_candidates üretiyoruz
-    radar_candidates: List[Dict[str, Any]] = []
-    for i, sym in enumerate(symbols[:10]):  # ilk 10 sembolden aday
-        radar_candidates.append({
-            "date": today_str,
-            "symbol": sym,
-            "volume": 2_000_000 + i * 100_000,  # LIQ_MIN üzerinde
-            "atr_pct": 0.08,                    # %8 ATR
-            "mom_5d": 0.02 + 0.001 * i,         # %2 civarı kısa vade momentum
-            "mom_20d": 0.05 + 0.001 * i,        # %5 civarı orta vade momentum
-            "vol_z20": 1.5,
-            "rsi_14": 55.0,
-            "macd": 0.5,
-            "adx14": 22.0,
-            "cci20": 100.0,
-            "vol_trend": 0.5,
-            "close": 100.0 + i,
-            "ema20": 98.0 + i,
-            "ema50": 95.0 + i,
-        })
+    radar_candidates: List[Dict[str, Any]] = ind_output.get("radar_candidates", [])
 
+    modules.append({
+        "name": "indicator_engine",
+        "status": "OK",
+        "start_time": ind_start,
+        "end_time": ind_end,
+        "retry_count": 0,
+        "error": None,
+        "result": {
+            "radar_candidates": len(radar_candidates)
+        }
+    })
+
+    log_write("indicator_engine", {
+        "status": "OK",
+        "start_time": ind_start,
+        "end_time": ind_end,
+        "retry_count": 0,
+        "error": None,
+        "output_summary": {
+            "radar_candidates": len(radar_candidates)
+        }
+    })
+
+    # ---------------------------------------------
+    # 3) regime_engine (ŞİMDİLİK SABİT YELLOW)
+    # ---------------------------------------------
+    reg_start = now_iso()
+    reg_context: Dict[str, Any] = {
+        # ileride config / checkpoint vs. eklenebilir
+    }
+    reg_output = run_regime_engine(reg_context)
+    reg_end = now_iso()
+
+    regime_info: Dict[str, Any] = reg_output.get("regime", {})
+
+    modules.append({
+        "name": "regime_engine",
+        "status": "OK",
+        "start_time": reg_start,
+        "end_time": reg_end,
+        "retry_count": 0,
+        "error": None,
+        "result": regime_info
+    })
+
+    log_write("regime_engine", {
+        "status": "OK",
+        "start_time": reg_start,
+        "end_time": reg_end,
+        "retry_count": 0,
+        "error": None,
+        "output_summary": regime_info
+    })
+
+    # --------------------------------------------------
+    # 4) RADAR ENGINE (GERÇEK MOTOR)
+    # --------------------------------------------------
     radar_start = now_iso()
+
     context: Dict[str, Any] = {
         "radar_candidates": radar_candidates,
-        "regime": {"regime": "YELLOW"},  # şimdilik sabit
+        "regime": regime_info,
         "config": {
             "macro_mult_GREEN": 1.05,
             "macro_mult_YELLOW": 1.00,
@@ -208,7 +254,6 @@ def simulate_pipeline_run() -> None:
     radar_debug: List[Dict[str, Any]] = radar_output.get("radar_debug", [])
     radar_summary: Dict[str, Any] = radar_output.get("radar_summary", {})
 
-    # radar_engine modül kaydı + log
     modules.append({
         "name": "radar_engine",
         "status": "OK",
@@ -237,11 +282,11 @@ def simulate_pipeline_run() -> None:
     })
 
     # ---------------------------------------------
-    # 3) diğer modüller (dummy)
+    # 5) diğer modüller (dummy)
     # ---------------------------------------------
     for name in module_names[1:]:
-        # radar_engine için gerçek kayıt yaptık, burada tekrar dummy oluşturma
-        if name == "radar_engine":
+        # indicator_engine, radar_engine, regime_engine için gerçek kayıt yaptık
+        if name in ("indicator_engine", "radar_engine", "regime_engine"):
             continue
 
         m_start = now_iso()
@@ -256,7 +301,6 @@ def simulate_pipeline_run() -> None:
             "error": None
         })
 
-        # her modül için dummy log
         log_write(name, {
             "status": "OK",
             "start_time": m_start,
@@ -275,6 +319,8 @@ def simulate_pipeline_run() -> None:
     # --------------------------------------------------
     # CORE10 DUMMY (şimdilik radar üstünden)
     # --------------------------------------------------
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
     core10_list: List[Dict[str, Any]] = []
     for rank, r in enumerate(radar_picks[:10], start=1):
         core10_list.append({
@@ -305,11 +351,11 @@ def simulate_pipeline_run() -> None:
     result_state = {
         "result_ready": True,
         "last_run": end_time,
-        "snapshot_data": snapshot_result,   # <-- gerçek snapshot burada
-        "radar": radar_picks,               # <-- GERÇEK RADAR MOTORU ÇIKTISI
-        "radar_debug": radar_debug,         # <-- debug satırları
-        "radar_summary": radar_summary,     # <-- özet
-        "core10": core10_list               # <-- şimdilik radar tabanlı dummy core10
+        "snapshot_data": snapshot_result,
+        "radar": radar_picks,
+        "radar_debug": radar_debug,
+        "radar_summary": radar_summary,
+        "core10": core10_list
     }
 
 

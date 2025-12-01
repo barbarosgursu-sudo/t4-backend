@@ -165,7 +165,7 @@ def simulate_pipeline_run() -> None:
         "output_summary": snapshot_result
     })
 
-    # --------------------------------------------------
+        # --------------------------------------------------
     # 2) DUMMY INDICATOR ENGINE → radar_candidates üret
     #    (Gerçek indicator_engine hazır olana kadar bu blok kullanılacak.)
     # --------------------------------------------------
@@ -195,6 +195,9 @@ def simulate_pipeline_run() -> None:
 
     ind_end = now_iso()
 
+    # Debug için: ilk birkaç candidate'i loglamak (tarih / sembol / volume vs.)
+    sample_candidates = radar_candidates[:3] if radar_candidates else []
+
     modules.append({
         "name": "indicator_engine",
         "status": "OK",
@@ -204,7 +207,8 @@ def simulate_pipeline_run() -> None:
         "error": None,
         "result": {
             "radar_candidates": len(radar_candidates),
-            "dummy": True
+            "dummy": True,
+            "sample_candidates": sample_candidates,
         }
     })
 
@@ -216,7 +220,8 @@ def simulate_pipeline_run() -> None:
         "error": None,
         "output_summary": {
             "radar_candidates": len(radar_candidates),
-            "dummy": True
+            "dummy": True,
+            "sample_candidates": sample_candidates,
         }
     })
 
@@ -435,3 +440,4 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+

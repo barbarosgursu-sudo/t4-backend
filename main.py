@@ -163,10 +163,87 @@ def simulate_pipeline_run() -> None:
         "output_summary": snapshot_result
     })
 
+    # --------------------------------------------------
+    # 2) RADAR ENGINE (GERÇEK MOTOR, ŞİMDİLİK DUMMY CANDIDATE)
+    # --------------------------------------------------
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+    # Şimdilik: indicator_engine yok, sembollerden dummy radar_candidates üretiyoruz
+    radar_candidates: List[Dict[str, Any]] = []
+    for i, sym in enumerate(symbols[:10]):  # ilk 10 sembolden aday
+        radar_candidates.append({
+            "date": today_str,
+            "symbol": sym,
+            "volume": 2_000_000 + i * 100_000,  # LIQ_MIN üzerinde
+            "atr_pct": 0.08,                    # %8 ATR
+            "mom_5d": 0.02 + 0.001 * i,         # %2 civarı kısa vade momentum
+            "mom_20d": 0.05 + 0.001 * i,        # %5 civarı orta vade momentum
+            "vol_z20": 1.5,
+            "rsi_14": 55.0,
+            "macd": 0.5,
+            "adx14": 22.0,
+            "cci20": 100.0,
+            "vol_trend": 0.5,
+            "close": 100.0 + i,
+            "ema20": 98.0 + i,
+            "ema50": 95.0 + i,
+        })
+
+    radar_start = now_iso()
+    context: Dict[str, Any] = {
+        "radar_candidates": radar_candidates,
+        "regime": {"regime": "YELLOW"},  # şimdilik sabit
+        "config": {
+            "macro_mult_GREEN": 1.05,
+            "macro_mult_YELLOW": 1.00,
+            "macro_mult_RED": 0.90,
+            # İleride RADAR_LIQ_MIN vb. eklenebilir
+        },
+    }
+
+    radar_output = run_radar_engine(context)
+    radar_end = now_iso()
+
+    radar_picks: List[Dict[str, Any]] = radar_output.get("radar", [])
+    radar_debug: List[Dict[str, Any]] = radar_output.get("radar_debug", [])
+    radar_summary: Dict[str, Any] = radar_output.get("radar_summary", {})
+
+    # radar_engine modül kaydı + log
+    modules.append({
+        "name": "radar_engine",
+        "status": "OK",
+        "start_time": radar_start,
+        "end_time": radar_end,
+        "retry_count": 0,
+        "error": None,
+        "result": {
+            "picked": len(radar_picks),
+            "candidates": len(radar_debug),
+            "summary": radar_summary,
+        }
+    })
+
+    log_write("radar_engine", {
+        "status": "OK",
+        "start_time": radar_start,
+        "end_time": radar_end,
+        "retry_count": 0,
+        "error": None,
+        "output_summary": {
+            "picked": len(radar_picks),
+            "candidates": len(radar_debug),
+            "latest": radar_summary.get("latest"),
+        }
+    })
+
     # ---------------------------------------------
-    # 2–10) diğer modüller (dummy)
+    # 3) diğer modüller (dummy)
     # ---------------------------------------------
     for name in module_names[1:]:
+        # radar_engine için gerçek kayıt yaptık, burada tekrar dummy oluşturma
+        if name == "radar_engine":
+            continue
+
         m_start = now_iso()
         m_end = now_iso()
 
@@ -196,39 +273,20 @@ def simulate_pipeline_run() -> None:
     pipeline_state["modules"] = modules
 
     # --------------------------------------------------
-    #  ŞEMA SABİTLEME: radar/core10 dummy ama TAM alanlı
+    # CORE10 DUMMY (şimdilik radar üstünden)
     # --------------------------------------------------
-    today_str = datetime.utcnow().strftime("%Y-%m-%d")
-
-    # Radar listesi: ilk N sembolden dummy skorlar
-    radar_list: List[Dict[str, Any]] = []
-    for i, sym in enumerate(symbols[:20]):
-        base_score = 60.0 + i  # dummy
-        adj_score = base_score + 2.0
-        radar_list.append({
-            "date": today_str,
-            "symbol": sym,
-            "base_score": base_score,
-            "macro_mult": 1.0,
-            "atr_pct": 0.03,      # %3 dummy
-            "sector": "",
-            "volume": 1_000_000 + i * 10_000,
-            "adj_score": adj_score,
-        })
-
-    # Core10 listesi: radar_list'in ilk 10 elemanından dummy seçim
     core10_list: List[Dict[str, Any]] = []
-    for rank, r in enumerate(radar_list[:10], start=1):
+    for rank, r in enumerate(radar_picks[:10], start=1):
         core10_list.append({
-            "date": r["date"],
-            "symbol": r["symbol"],
-            "base_score": r["base_score"],
-            "macro_trend": "GREEN",
-            "macro_mult": r["macro_mult"],
-            "atr_pct": r["atr_pct"],
-            "volume": r["volume"],
+            "date": r.get("date", today_str),
+            "symbol": r.get("symbol"),
+            "base_score": r.get("base_score"),
+            "macro_trend": "GREEN",  # şimdilik dummy
+            "macro_mult": r.get("macro_mult"),
+            "atr_pct": r.get("atr_pct"),
+            "volume": r.get("volume"),
             "rank_today": rank,
-            "adj_score": r["adj_score"],
+            "adj_score": r.get("adj_score"),
             "rr_expected": 2.0,           # dummy RR
             "oneD_pass": True,
             "fourH_pass": True,
@@ -247,9 +305,11 @@ def simulate_pipeline_run() -> None:
     result_state = {
         "result_ready": True,
         "last_run": end_time,
-        "snapshot_data": snapshot_result,  # <-- gerçek snapshot burada
-        "radar": radar_list,
-        "core10": core10_list
+        "snapshot_data": snapshot_result,   # <-- gerçek snapshot burada
+        "radar": radar_picks,               # <-- GERÇEK RADAR MOTORU ÇIKTISI
+        "radar_debug": radar_debug,         # <-- debug satırları
+        "radar_summary": radar_summary,     # <-- özet
+        "core10": core10_list               # <-- şimdilik radar tabanlı dummy core10
     }
 
 
@@ -313,4 +373,3 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
-

@@ -173,32 +173,85 @@ def simulate_pipeline_run() -> None:
         "symbols": symbols
     }
     ind_output = run_indicator_engine(ind_context)
-    ind_end = now_iso()
+    radar_candidates: List[Dict[str, Any]] = ind_output.get("radar_candidates", []) or []
 
-    radar_candidates: List[Dict[str, Any]] = ind_output.get("radar_candidates", [])
+    # *** KRİTİK FALLBACK ***
+    # Eğer indicator_engine sıfır candidate üretirse,
+    # snapshot sembollerinden minimum dummy radar_candidates üret.
+    if not radar_candidates and symbols:
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        fallback_list: List[Dict[str, Any]] = []
+        for i, sym in enumerate(symbols[:10]):
+            fallback_list.append({
+                "date": today_str,
+                "symbol": sym,
+                "volume": 2_000_000 + i * 100_000,  # LIQ_MIN üzerinde
+                "atr_pct": 0.08,
+                "mom_5d": 0.02 + 0.001 * i,
+                "mom_20d": 0.05 + 0.001 * i,
+                "vol_z20": 1.5,
+                "rsi_14": 55.0,
+                "macd": 0.5,
+                "adx14": 22.0,
+                "cci20": 100.0,
+                "vol_trend": 0.5,
+                "close": 100.0 + i,
+                "ema20": 98.0 + i,
+                "ema50": 95.0 + i,
+            })
+        radar_candidates = fallback_list
 
-    modules.append({
-        "name": "indicator_engine",
-        "status": "OK",
-        "start_time": ind_start,
-        "end_time": ind_end,
-        "retry_count": 0,
-        "error": None,
-        "result": {
-            "radar_candidates": len(radar_candidates)
-        }
-    })
+        ind_end = now_iso()
+        modules.append({
+            "name": "indicator_engine",
+            "status": "WARN",  # fallback kullanıldı
+            "start_time": ind_start,
+            "end_time": ind_end,
+            "retry_count": 0,
+            "error": None,
+            "result": {
+                "radar_candidates": len(radar_candidates),
+                "fallback_used": True
+            }
+        })
 
-    log_write("indicator_engine", {
-        "status": "OK",
-        "start_time": ind_start,
-        "end_time": ind_end,
-        "retry_count": 0,
-        "error": None,
-        "output_summary": {
-            "radar_candidates": len(radar_candidates)
-        }
-    })
+        log_write("indicator_engine", {
+            "status": "WARN",
+            "start_time": ind_start,
+            "end_time": ind_end,
+            "retry_count": 0,
+            "error": None,
+            "output_summary": {
+                "radar_candidates": len(radar_candidates),
+                "fallback_used": True
+            }
+        })
+    else:
+        ind_end = now_iso()
+        modules.append({
+            "name": "indicator_engine",
+            "status": "OK",
+            "start_time": ind_start,
+            "end_time": ind_end,
+            "retry_count": 0,
+            "error": None,
+            "result": {
+                "radar_candidates": len(radar_candidates),
+                "fallback_used": False
+            }
+        })
+
+        log_write("indicator_engine", {
+            "status": "OK",
+            "start_time": ind_start,
+            "end_time": ind_end,
+            "retry_count": 0,
+            "error": None,
+            "output_summary": {
+                "radar_candidates": len(radar_candidates),
+                "fallback_used": False
+            }
+        })
 
     # ---------------------------------------------
     # 3) regime_engine (ŞİMDİLİK SABİT YELLOW)

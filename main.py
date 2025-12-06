@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 import os
 
@@ -182,9 +182,25 @@ result_state: Dict[str, Any] = {
 # PIPELINE SIMULATION (with real fetch + indicator + radar)
 # --------------------------------------------------
 
-def simulate_pipeline_run() -> None:
+def simulate_pipeline_run(context: Optional[Dict[str, Any]] = None) -> None:
     """Simulate morning pipeline and fill pipeline_state + result_state."""
     global pipeline_state, result_state
+
+    ctx: Dict[str, Any] = context or {}
+
+    # symbols: öncelik → context.symbols, yoksa load_symbols()
+    symbols = ctx.get("symbols")
+    if not symbols:
+        symbols = load_symbols()
+    if not isinstance(symbols, list):
+        symbols = list(symbols)
+
+    # lookback_days: context.lookback_days varsa kullan, yoksa 120
+    lookback_raw = ctx.get("lookback_days")
+    try:
+        lookback_days = int(lookback_raw) if lookback_raw is not None else 120
+    except Exception:
+        lookback_days = 120
 
     start_time = now_iso()
 
@@ -215,7 +231,6 @@ def simulate_pipeline_run() -> None:
     # 1) SNAPSHOT SERVICE (GERÇEK)
     # ---------------------------------------------
     snap_start = now_iso()
-    symbols = load_symbols()
     snapshot_result = {
         "count": len(symbols),
         "symbols": symbols
@@ -247,7 +262,7 @@ def simulate_pipeline_run() -> None:
     fetch_start = now_iso()
     fetch_context: Dict[str, Any] = {
         "symbols": symbols,
-        "lookback_days": 120
+        "lookback_days": lookback_days
     }
 
     fetch_result = run_fetch_engine(fetch_context)
@@ -534,7 +549,19 @@ def root():
 
 @app.route("/runMorningPipeline", methods=["POST"])
 def run_morning_pipeline():
-    simulate_pipeline_run()
+    # GAS'ten gelen JSON body'yi al
+    data = request.get_json(silent=True) or {}
+
+    symbols = data.get("symbols")
+    lookback_days = data.get("lookback_days")
+
+    ctx: Dict[str, Any] = {
+        "symbols": symbols,
+        "lookback_days": lookback_days,
+    }
+
+    simulate_pipeline_run(ctx)
+
     return jsonify({
         "status": "ok",
         "message": "pipeline completed",

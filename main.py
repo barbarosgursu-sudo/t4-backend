@@ -80,6 +80,80 @@ def load_symbols() -> List[str]:
         print("load_symbols ERROR:", e)
         return []
 
+def build_candles_by_symbol(fetch_result: Dict[str, Any]) -> Dict[str, Dict[str, List[Any]]]:
+    """
+    fetch_engine çıktısını indicator_engine'in istediği
+    candles_by_symbol formatına dönüştürür.
+
+    fetch_result["data"][sym] = [
+        {"date": "YYYY-MM-DD", "open": ..., "high": ..., "low": ..., "close": ..., "volume": ...},
+        ...
+    ]
+
+    dönüş:
+        {
+            sym: {
+                "date": [...],
+                "t": [...],       # epoch (UTC midnight)
+                "o": [...],
+                "h": [...],
+                "l": [...],
+                "c": [...],
+                "v": [...],
+            },
+            ...
+        }
+    """
+    import time
+    from datetime import datetime
+
+    out: Dict[str, Dict[str, List[Any]]] = {}
+    data = fetch_result.get("data", {}) or {}
+
+    for sym, rows in data.items():
+        if not rows:
+            continue
+
+        dates: List[str] = []
+        t_list: List[float] = []
+        o_list: List[float] = []
+        h_list: List[float] = []
+        l_list: List[float] = []
+        c_list: List[float] = []
+        v_list: List[float] = []
+
+        for r in rows:
+            ds = str(r.get("date"))
+            dates.append(ds)
+
+            # date → epoch (UTC midnight)
+            try:
+                dt = datetime.strptime(ds, "%Y-%m-%d")
+                epoch = time.mktime(dt.timetuple())
+            except Exception:
+                epoch = None
+            t_list.append(epoch)
+
+            o_list.append(float(r.get("open", 0.0)))
+            h_list.append(float(r.get("high", 0.0)))
+            l_list.append(float(r.get("low", 0.0)))
+            c_list.append(float(r.get("close", 0.0)))
+            v_list.append(float(r.get("volume", 0.0)))
+
+        out[sym] = {
+            "date": dates,
+            "t": t_list,
+            "o": o_list,
+            "h": h_list,
+            "l": l_list,
+            "c": c_list,
+            "v": v_list,
+        }
+
+    return out
+
+
+
 
 # --------------------------------------------------
 # GLOBAL STATE
@@ -502,3 +576,4 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+

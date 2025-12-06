@@ -333,6 +333,8 @@ def compute_indicators_for_symbol(
     - fetch_engine candle dizisini zaten "etkin bar" ile uyumlu şekilde verecek.
     - Biz her zaman son barı (k = n-1) kullanıyoruz.
     """
+    # Yeni: date dizisini de alıyoruz
+    dates = candles.get("date") or []
     t = candles.get("t") or []
     o = candles.get("o") or []
     h = candles.get("h") or []
@@ -426,17 +428,18 @@ def compute_indicators_for_symbol(
     # risk_color (ATR%'ye göre)
     risk_color = _macro_color_from_atr(atr_pct_decimal, cfg=cfg)
 
-    # Tarih string'i: t dizisinden üret (varsayılan: UNIX epoch saniye)
-    date_str: str
-    if t and len(t) > k:
-        ts = t[k]
+    # >>> YENİ TARİH MANTIĞI <<<
+    # 1) Öncelik: candles["date"][k] → "YYYY-MM-DD"
+    # 2) Yedek: candles["t"][k] epoch → "YYYY-MM-DD"
+    # 3) Son çare: bugün UTC
+    if dates and len(dates) > k and dates[k]:
+        date_str = str(dates[k])[:10]  # güvenlik: sadece "YYYY-MM-DD" kısmını al
+    elif t and len(t) > k:
         try:
-            # Eğer ts saniye cinsinden epoch ise:
-            dt = datetime.utcfromtimestamp(float(ts))
+            dt = datetime.utcfromtimestamp(float(t[k]))
+            date_str = dt.strftime("%Y-%m-%d")
         except Exception:
-            # Aksi halde bugün UTC
-            dt = datetime.utcnow()
-        date_str = dt.strftime("%Y-%m-%d")
+            date_str = datetime.utcnow().strftime("%Y-%m-%d")
     else:
         date_str = datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -580,3 +583,4 @@ def run_indicator_engine(context: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "radar_candidates": radar_candidates_dummy
     }
+

@@ -30,7 +30,7 @@ def log_write(module_name: str, entry: dict) -> None:
     ensure_log_dir()
 
     date_str = datetime.utcnow().strftime("%Y-%m-%d")
-    log_path = os.path.join(LOG_DIR, f"{date_str}_pipeline.json)
+    log_path = os.path.join(LOG_DIR, f"{date_str}_pipeline.json")  # <-- TIRNAK DÜZELTİLDİ
 
     # Var olan logu oku
     if os.path.exists(log_path):

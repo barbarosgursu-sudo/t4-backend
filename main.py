@@ -293,51 +293,44 @@ def simulate_pipeline_run() -> None:
     # fetch_result["data"] ileride indicator_engine için kullanılacak.
 
     # --------------------------------------------------
-    # 3) DUMMY INDICATOR ENGINE → radar_candidates üret
-    #    (Gerçek indicator_engine hazır olana kadar bu blok kullanılacak.)
-    # --------------------------------------------------
-    ind_start = now_iso()
-    radar_candidates: List[Dict[str, Any]] = []
+# 3) REAL INDICATOR ENGINE → radar_candidates üret
+# --------------------------------------------------
+ind_start = now_iso()
 
-    if symbols:
-        today_str = datetime.utcnow().strftime("%Y-%m-%d")
-        for i, sym in enumerate(symbols[:10]):
-            radar_candidates.append({
-                "date": today_str,
-                "symbol": sym,
-                "volume": 2_000_000 + i * 100_000,  # LIQ_MIN üzerinde
-                "atr_pct": 0.08,
-                "mom_5d": 0.02 + 0.001 * i,
-                "mom_20d": 0.05 + 0.001 * i,
-                "vol_z20": 1.5,
-                "rsi_14": 55.0,
-                "macd": 0.5,
-                "adx14": 22.0,
-                "cci20": 100.0,
-                "vol_trend": 0.5,
-                "close": 100.0 + i,
-                "ema20": 98.0 + i,
-                "ema50": 95.0 + i,
-            })
+ind_context = {
+    "fetch_data": fetch_result.get("data", {}),
+    "as_of": fetch_result.get("as_of")
+}
 
-    ind_end = now_iso()
+radar_candidates = run_indicator_engine(ind_context)
 
-    # Debug için: ilk birkaç candidate'i loglamak (tarih / sembol / volume vs.)
-    sample_candidates = radar_candidates[:3] if radar_candidates else []
+ind_end = now_iso()
 
-    modules.append({
-        "name": "indicator_engine",
-        "status": "OK",
-        "start_time": ind_start,
-        "end_time": ind_end,
-        "retry_count": 0,
-        "error": None,
-        "result": {
-            "radar_candidates": len(radar_candidates),
-            "dummy": True,
-            "sample_candidates": sample_candidates,
-        }
-    })
+modules.append({
+    "name": "indicator_engine",
+    "status": "OK",
+    "start_time": ind_start,
+    "end_time": ind_end,
+    "retry_count": 0,
+    "error": None,
+    "result": {
+        "radar_candidates": len(radar_candidates),
+        "dummy": False,
+    }
+})
+
+log_write("indicator_engine", {
+    "status": "OK",
+    "start_time": ind_start,
+    "end_time": ind_end,
+    "retry_count": 0,
+    "error": None,
+    "output_summary": {
+        "radar_candidates": len(radar_candidates),
+        "dummy": False,
+    }
+})
+
 
     log_write("indicator_engine", {
         "status": "OK",
@@ -576,4 +569,5 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+
 

@@ -158,10 +158,12 @@ def pick_filter(
 # Main Radar Engine
 # ----------------------------------------------------------------------
 
-def compute_radar(candidates_raw: List[Dict[str, Any]],
-                  macro_trend: str,
-                  macro_mults: Dict[str, float],
-                  cfg: Dict[str, Any]) -> Dict[str, Any]:
+def compute_radar(
+    candidates_raw: List[Dict[str, Any]],
+    macro_trend: str,
+    macro_mults: Dict[str, float],
+    cfg: Dict[str, Any]
+) -> Dict[str, Any]:
 
     macro_u = macro_trend.upper()
     macro_mult = macro_mults.get(macro_u, macro_mults.get("DEFAULT", 1.0))
@@ -189,13 +191,14 @@ def compute_radar(candidates_raw: List[Dict[str, Any]],
                 "picked": 0,
                 "macro_trend": macro_u,
                 "macro_mult": macro_mult,
-            }
+            },
+            "radar_api": [],
         }
 
     # ------------------------------------------------------------
     # Score candidates
     # ------------------------------------------------------------
-    scored = []
+    scored: List[Dict[str, Any]] = []
 
     for r in candidates_raw:
         if _normalize_date_to_str(r.get("date")) != latest:
@@ -247,6 +250,19 @@ def compute_radar(candidates_raw: List[Dict[str, Any]],
             "sector": r.get("sector") or "",
             "volume": volume,
             "adj_score": adj,
+            # raw indicators for radar_picks_api
+            "close": close,
+            "ema20": ema20,
+            "ema50": ema50,
+            "mom5": mom5,
+            "mom20": mom20,
+            "vol_z20": z20,
+            "vol_trend": voltr,
+            "rsi14": rsi,
+            "adx14": adx,
+            "macd": macd,
+            "cci20": cci,
+            # debug scores
             "_s_mom": s_mom,
             "_s_vol": s_vol,
             "_s_trend": s_trend,
@@ -258,11 +274,11 @@ def compute_radar(candidates_raw: List[Dict[str, Any]],
     # Sıralama
     scored.sort(key=lambda x: x["adj_score"], reverse=True)
 
-    # Picks
+    # Picks (sector cap opsiyonel)
     picks = pick_filter(scored, use_sector_cap, sector_cap)
 
     # Debug
-    debug = [
+    candidates_debug = [
         {
             "date": r["date"],
             "symbol": r["symbol"],
@@ -272,6 +288,31 @@ def compute_radar(candidates_raw: List[Dict[str, Any]],
             "s_breakout": r["_s_breakout"],
             "s_rs": r["_s_rs"],
             "atr_penalty": r["_atr_penalty"],
+            "base_score": r["base_score"],
+            "macro_mult": r["macro_mult"],
+            "adj_score": r["adj_score"],
+        }
+        for r in scored
+    ]
+
+    # radar_picks_api satırları (kilit şema)
+    radar_api = [
+        {
+            "date": r["date"],
+            "symbol": r["symbol"],
+            "close": r["close"],
+            "volume": r["volume"],
+            "atr_pct": r["atr_pct"],
+            "ema20": r["ema20"],
+            "ema50": r["ema50"],
+            "mom5": r["mom5"],
+            "mom20": r["mom20"],
+            "vol_z20": r["vol_z20"],
+            "vol_trend": r["vol_trend"],
+            "rsi14": r["rsi14"],
+            "adx14": r["adx14"],
+            "macd": r["macd"],
+            "cci20": r["cci20"],
             "base_score": r["base_score"],
             "macro_mult": r["macro_mult"],
             "adj_score": r["adj_score"],
@@ -289,9 +330,10 @@ def compute_radar(candidates_raw: List[Dict[str, Any]],
 
     return {
         "latest_date": latest,
-        "candidates_debug": debug,
+        "candidates_debug": candidates_debug,
         "picks": picks,
         "summary": summary,
+        "radar_api": radar_api,
     }
 
 
@@ -324,4 +366,5 @@ def run_radar_engine(context: Dict[str, Any]) -> Dict[str, Any]:
         "radar": result["picks"],
         "radar_debug": result["candidates_debug"],
         "radar_summary": result["summary"],
+        "radar_api": result["radar_api"],
     }

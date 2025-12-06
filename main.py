@@ -5,7 +5,8 @@ import json
 import os
 
 from modules.radar_engine import run_radar_engine
-from modules.fetch_engine import run_fetch_engine  # <-- EKLENDİ
+from modules.fetch_engine import run_fetch_engine
+from modules.indicator_engine import run_indicator_engine  # <--- EKLENDİ
 
 app = Flask(__name__)
 
@@ -30,7 +31,7 @@ def log_write(module_name: str, entry: dict) -> None:
     ensure_log_dir()
 
     date_str = datetime.utcnow().strftime("%Y-%m-%d")
-    log_path = os.path.join(LOG_DIR, f"{date_str}_pipeline.json")  # <-- TIRNAK DÜZELTİLDİ
+    log_path = os.path.join(LOG_DIR, f"{date_str}_pipeline.json")
 
     # Var olan logu oku
     if os.path.exists(log_path):
@@ -80,6 +81,7 @@ def load_symbols() -> List[str]:
         print("load_symbols ERROR:", e)
         return []
 
+
 def build_candles_by_symbol(fetch_result: Dict[str, Any]) -> Dict[str, Dict[str, List[Any]]]:
     """
     fetch_engine çıktısını indicator_engine'in istediği
@@ -105,7 +107,7 @@ def build_candles_by_symbol(fetch_result: Dict[str, Any]) -> Dict[str, Dict[str,
         }
     """
     import time
-    from datetime import datetime
+    from datetime import datetime as dt
 
     out: Dict[str, Dict[str, List[Any]]] = {}
     data = fetch_result.get("data", {}) or {}
@@ -128,8 +130,8 @@ def build_candles_by_symbol(fetch_result: Dict[str, Any]) -> Dict[str, Dict[str,
 
             # date → epoch (UTC midnight)
             try:
-                dt = datetime.strptime(ds, "%Y-%m-%d")
-                epoch = time.mktime(dt.timetuple())
+                dtt = dt.strptime(ds, "%Y-%m-%d")
+                epoch = time.mktime(dtt.timetuple())
             except Exception:
                 epoch = None
             t_list.append(epoch)
@@ -153,8 +155,6 @@ def build_candles_by_symbol(fetch_result: Dict[str, Any]) -> Dict[str, Dict[str,
     return out
 
 
-
-
 # --------------------------------------------------
 # GLOBAL STATE
 # --------------------------------------------------
@@ -172,14 +172,14 @@ result_state: Dict[str, Any] = {
     "radar": [],
     "radar_debug": [],
     "radar_summary": {},
-    "radar_api": [],          # <-- EKLENDİ
+    "radar_api": [],
     "core10": [],
     "snapshot_data": {}
 }
 
 
 # --------------------------------------------------
-# PIPELINE SIMULATION (with real snapshot_service + radar_engine)
+# PIPELINE SIMULATION (with real fetch + indicator + radar)
 # --------------------------------------------------
 
 def simulate_pipeline_run() -> None:
@@ -192,9 +192,9 @@ def simulate_pipeline_run() -> None:
         "snapshot_service",
         "fetch_engine",
         "repair_engine",
-        "indicator_engine",   # şimdilik dummy olarak loglanacak
+        "indicator_engine",
         "radar_engine",
-        "regime_engine",      # şimdilik dummy olarak loglanacak
+        "regime_engine",
         "core10_engine",
         "tuning_engine",
         "results_aggregator",
@@ -212,7 +212,7 @@ def simulate_pipeline_run() -> None:
     }
 
     # ---------------------------------------------
-    # 1) snapshot_service (GERÇEK)
+    # 1) SNAPSHOT SERVICE (GERÇEK)
     # ---------------------------------------------
     snap_start = now_iso()
     symbols = load_symbols()
@@ -242,7 +242,7 @@ def simulate_pipeline_run() -> None:
     })
 
     # ---------------------------------------------
-    # 2) FETCH ENGINE (YENİ – GERÇEK FİYAT VERİSİ)
+    # 2) FETCH ENGINE (GERÇEK FİYAT VERİSİ)
     # ---------------------------------------------
     fetch_start = now_iso()
     fetch_context: Dict[str, Any] = {
@@ -253,8 +253,7 @@ def simulate_pipeline_run() -> None:
     fetch_result = run_fetch_engine(fetch_context)
     fetch_end = now_iso()
 
-    # Özet: kaç sembol, kaçında veri var, kaç hata
-    fetched_symbols = list(fetch_result.get("data", {}).keys())
+    fetched_symbols = list((fetch_result.get("data") or {}).keys())
     fetch_errors = fetch_result.get("errors", []) or []
 
     modules.append({
@@ -289,48 +288,36 @@ def simulate_pipeline_run() -> None:
         }
     })
 
-    # ŞU AN İÇİN indicator_engine hâlâ dummy radar_candidates üretiyor.
-    # fetch_result["data"] ileride indicator_engine için kullanılacak.
-
     # --------------------------------------------------
-# 3) REAL INDICATOR ENGINE → radar_candidates üret
-# --------------------------------------------------
-ind_start = now_iso()
+    # 3) INDICATOR ENGINE (GERÇEK) → radar_candidates üret
+    # --------------------------------------------------
+    ind_start = now_iso()
 
-ind_context = {
-    "fetch_data": fetch_result.get("data", {}),
-    "as_of": fetch_result.get("as_of")
-}
+    candles_by_symbol = build_candles_by_symbol(fetch_result)
 
-radar_candidates = run_indicator_engine(ind_context)
-
-ind_end = now_iso()
-
-modules.append({
-    "name": "indicator_engine",
-    "status": "OK",
-    "start_time": ind_start,
-    "end_time": ind_end,
-    "retry_count": 0,
-    "error": None,
-    "result": {
-        "radar_candidates": len(radar_candidates),
-        "dummy": False,
+    ind_context: Dict[str, Any] = {
+        "symbols": fetched_symbols,
+        "candles_by_symbol": candles_by_symbol,
+        "config": {}  # İleride ATR risk eşikleri vs. buradan geçer
     }
-})
 
-log_write("indicator_engine", {
-    "status": "OK",
-    "start_time": ind_start,
-    "end_time": ind_end,
-    "retry_count": 0,
-    "error": None,
-    "output_summary": {
-        "radar_candidates": len(radar_candidates),
-        "dummy": False,
-    }
-})
+    ind_result = run_indicator_engine(ind_context)
+    radar_candidates_struct = ind_result.get("radar_candidates", []) or []
 
+    ind_end = now_iso()
+
+    modules.append({
+        "name": "indicator_engine",
+        "status": "OK",
+        "start_time": ind_start,
+        "end_time": ind_end,
+        "retry_count": 0,
+        "error": None,
+        "result": {
+            "radar_candidates": len(radar_candidates_struct),
+            "dummy": False,
+        }
+    })
 
     log_write("indicator_engine", {
         "status": "OK",
@@ -339,9 +326,8 @@ log_write("indicator_engine", {
         "retry_count": 0,
         "error": None,
         "output_summary": {
-            "radar_candidates": len(radar_candidates),
-            "dummy": True,
-            "sample_candidates": sample_candidates,
+            "radar_candidates": len(radar_candidates_struct),
+            "dummy": False,
         }
     })
 
@@ -375,11 +361,37 @@ log_write("indicator_engine", {
 
     # --------------------------------------------------
     # 5) RADAR ENGINE (GERÇEK MOTOR)
+    #    indicator_engine çıktısını flat formata çevirip besliyoruz.
     # --------------------------------------------------
     radar_start = now_iso()
 
-    context: Dict[str, Any] = {
-        "radar_candidates": radar_candidates,
+    radar_candidates_flat: List[Dict[str, Any]] = []
+    for rc in radar_candidates_struct:
+        sym = rc.get("symbol")
+        dt_str = rc.get("date")
+        ind = rc.get("indicators", {}) or {}
+
+        radar_candidates_flat.append({
+            "date": dt_str,
+            "symbol": sym,
+            "volume": ind.get("volume"),
+            "atr_pct": ind.get("atr_pct"),
+            "mom_5d": ind.get("mom5"),
+            "mom_20d": ind.get("mom20"),
+            "vol_z20": ind.get("vol_z20"),
+            "rsi_14": ind.get("rsi14"),
+            "ema20": ind.get("ema20"),
+            "ema50": ind.get("ema50"),
+            "adx14": ind.get("adx14"),
+            "macd": ind.get("macd"),
+            "cci20": ind.get("cci20"),
+            "vol_trend": ind.get("vol_trend"),
+            "close": ind.get("close"),
+            # "sector": ...  # istersek ileride ekleriz
+        })
+
+    radar_context: Dict[str, Any] = {
+        "radar_candidates": radar_candidates_flat,
         "regime": regime_info,
         "config": {
             "macro_mult_GREEN": 1.05,
@@ -389,13 +401,13 @@ log_write("indicator_engine", {
         },
     }
 
-    radar_output = run_radar_engine(context)
+    radar_output = run_radar_engine(radar_context)
     radar_end = now_iso()
 
-    radar_picks: List[Dict[str, Any]] = radar_output.get("radar", [])
-    radar_debug: List[Dict[str, Any]] = radar_output.get("radar_debug", [])
-    radar_summary: Dict[str, Any] = radar_output.get("radar_summary", {})
-    radar_api: List[Dict[str, Any]] = radar_output.get("radar_api", [])  # <-- EKLENDİ
+    radar_picks: List[Dict[str, Any]] = radar_output.get("radar", []) or []
+    radar_debug: List[Dict[str, Any]] = radar_output.get("radar_debug", []) or []
+    radar_summary: Dict[str, Any] = radar_output.get("radar_summary", {}) or {}
+    radar_api: List[Dict[str, Any]] = radar_output.get("radar_api", []) or []
 
     modules.append({
         "name": "radar_engine",
@@ -421,7 +433,7 @@ log_write("indicator_engine", {
             "picked": len(radar_picks),
             "candidates": len(radar_debug),
             "latest": radar_summary.get("latest"),
-            "radar_api_rows": len(radar_api),  # <-- EKLENDİ
+            "radar_api_rows": len(radar_api),
         }
     })
 
@@ -466,7 +478,7 @@ log_write("indicator_engine", {
     pipeline_state["modules"] = modules
 
     # --------------------------------------------------
-    # CORE10 DUMMY (radar üzerinden)
+    # 7) CORE10 DUMMY (radar üzerinden)
     # --------------------------------------------------
     today_str = datetime.utcnow().strftime("%Y-%m-%d")
 
@@ -476,7 +488,7 @@ log_write("indicator_engine", {
             "date": r.get("date", today_str),
             "symbol": r.get("symbol"),
             "base_score": r.get("base_score"),
-            "macro_trend": "GREEN",  # şimdilik dummy
+            "macro_trend": regime_info.get("regime", "YELLOW"),
             "macro_mult": r.get("macro_mult"),
             "atr_pct": r.get("atr_pct"),
             "volume": r.get("volume"),
@@ -491,12 +503,14 @@ log_write("indicator_engine", {
             "status": "WATCHING",
             "days_held": 1,
             "reason": "ENTER: dummy",
-            "entry_price": 100.0 + rank,  # dummy
-            "last_price": 100.0 + rank,
+            "entry_price": r.get("close") or 0.0,
+            "last_price": r.get("close") or 0.0,
             "last_update": today_str + " 10:00:00",
         })
 
-    # BUILD RESULT PAYLOAD
+    # --------------------------------------------------
+    # 8) RESULT PAYLOAD
+    # --------------------------------------------------
     result_state = {
         "result_ready": True,
         "last_run": end_time,
@@ -504,8 +518,8 @@ log_write("indicator_engine", {
         "radar": radar_picks,
         "radar_debug": radar_debug,
         "radar_summary": radar_summary,
-        "radar_api": radar_api,   # <-- EKLENDİ
-        "core10": core10_list
+        "radar_api": radar_api,
+        "core10": core10_list,
     }
 
 
@@ -523,7 +537,7 @@ def run_morning_pipeline():
     simulate_pipeline_run()
     return jsonify({
         "status": "ok",
-        "message": "dummy pipeline + real snapshot completed",
+        "message": "pipeline completed",
         "pipeline_status": pipeline_state["pipeline_status"],
         "start_time": pipeline_state["start_time"],
         "end_time": pipeline_state["end_time"],
@@ -569,5 +583,3 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
-
-

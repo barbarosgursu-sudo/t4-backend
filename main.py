@@ -97,9 +97,9 @@ result_state: Dict[str, Any] = {
     "radar": [],
     "radar_debug": [],
     "radar_summary": {},
+    "radar_api": [],          # <-- EKLENDİ
     "core10": [],
-    "snapshot_data": {},
-    "radar_api": []  # YENİ: radar_picks_api için backend kaynağı
+    "snapshot_data": {}
 }
 
 
@@ -166,7 +166,7 @@ def simulate_pipeline_run() -> None:
         "output_summary": snapshot_result
     })
 
-        # --------------------------------------------------
+    # --------------------------------------------------
     # 2) DUMMY INDICATOR ENGINE → radar_candidates üret
     #    (Gerçek indicator_engine hazır olana kadar bu blok kullanılacak.)
     # --------------------------------------------------
@@ -276,7 +276,7 @@ def simulate_pipeline_run() -> None:
     radar_picks: List[Dict[str, Any]] = radar_output.get("radar", [])
     radar_debug: List[Dict[str, Any]] = radar_output.get("radar_debug", [])
     radar_summary: Dict[str, Any] = radar_output.get("radar_summary", {})
-    radar_api: List[Dict[str, Any]] = radar_output.get("radar_api", [])  # YENİ
+    radar_api: List[Dict[str, Any]] = radar_output.get("radar_api", [])  # <-- EKLENDİ
 
     modules.append({
         "name": "radar_engine",
@@ -302,6 +302,7 @@ def simulate_pipeline_run() -> None:
             "picked": len(radar_picks),
             "candidates": len(radar_debug),
             "latest": radar_summary.get("latest"),
+            "radar_api_rows": len(radar_api),  # <-- EKLENDİ
         }
     })
 
@@ -378,8 +379,8 @@ def simulate_pipeline_run() -> None:
         "radar": radar_picks,
         "radar_debug": radar_debug,
         "radar_summary": radar_summary,
-        "core10": core10_list,
-        "radar_api": radar_api  # YENİ
+        "radar_api": radar_api,   # <-- EKLENDİ
+        "core10": core10_list
     }
 
 

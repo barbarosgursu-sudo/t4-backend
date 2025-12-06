@@ -560,7 +560,18 @@ def run_morning_pipeline():
         "lookback_days": lookback_days,
     }
 
-    simulate_pipeline_run(ctx)
+    try:
+        simulate_pipeline_run(ctx)
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        # Hata log'a da düşsün
+        print("PIPELINE_ERROR:", tb)
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "traceback": tb
+        }), 500
 
     return jsonify({
         "status": "ok",
@@ -610,3 +621,4 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+

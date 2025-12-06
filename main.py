@@ -98,7 +98,8 @@ result_state: Dict[str, Any] = {
     "radar_debug": [],
     "radar_summary": {},
     "core10": [],
-    "snapshot_data": {}
+    "snapshot_data": {},
+    "radar_api": []  # YENİ: radar_picks_api için backend kaynağı
 }
 
 
@@ -275,6 +276,7 @@ def simulate_pipeline_run() -> None:
     radar_picks: List[Dict[str, Any]] = radar_output.get("radar", [])
     radar_debug: List[Dict[str, Any]] = radar_output.get("radar_debug", [])
     radar_summary: Dict[str, Any] = radar_output.get("radar_summary", {})
+    radar_api: List[Dict[str, Any]] = radar_output.get("radar_api", [])  # YENİ
 
     modules.append({
         "name": "radar_engine",
@@ -376,7 +378,8 @@ def simulate_pipeline_run() -> None:
         "radar": radar_picks,
         "radar_debug": radar_debug,
         "radar_summary": radar_summary,
-        "core10": core10_list
+        "core10": core10_list,
+        "radar_api": radar_api  # YENİ
     }
 
 
@@ -440,4 +443,3 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
-

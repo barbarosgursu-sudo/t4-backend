@@ -5,6 +5,7 @@ import json
 import os
 
 from modules.radar_engine import run_radar_engine
+from modules.fetch_engine import run_fetch_engine  # <-- EKLENDİ
 
 app = Flask(__name__)
 
@@ -29,7 +30,7 @@ def log_write(module_name: str, entry: dict) -> None:
     ensure_log_dir()
 
     date_str = datetime.utcnow().strftime("%Y-%m-%d")
-    log_path = os.path.join(LOG_DIR, f"{date_str}_pipeline.json")
+    log_path = os.path.join(LOG_DIR, f"{date_str}_pipeline.json)
 
     # Var olan logu oku
     if os.path.exists(log_path):
@@ -166,8 +167,59 @@ def simulate_pipeline_run() -> None:
         "output_summary": snapshot_result
     })
 
+    # ---------------------------------------------
+    # 2) FETCH ENGINE (YENİ – GERÇEK FİYAT VERİSİ)
+    # ---------------------------------------------
+    fetch_start = now_iso()
+    fetch_context: Dict[str, Any] = {
+        "symbols": symbols,
+        "lookback_days": 120
+    }
+
+    fetch_result = run_fetch_engine(fetch_context)
+    fetch_end = now_iso()
+
+    # Özet: kaç sembol, kaçında veri var, kaç hata
+    fetched_symbols = list(fetch_result.get("data", {}).keys())
+    fetch_errors = fetch_result.get("errors", []) or []
+
+    modules.append({
+        "name": "fetch_engine",
+        "status": fetch_result.get("status", "ERROR"),
+        "start_time": fetch_start,
+        "end_time": fetch_end,
+        "retry_count": 0,
+        "error": None if fetch_result.get("status") == "OK" else "fetch_engine error",
+        "result": {
+            "as_of": fetch_result.get("as_of"),
+            "lookback_days": fetch_result.get("lookback_days"),
+            "symbols_requested": len(symbols),
+            "symbols_with_data": len(fetched_symbols),
+            "error_count": len(fetch_errors),
+        }
+    })
+
+    log_write("fetch_engine", {
+        "status": fetch_result.get("status", "ERROR"),
+        "start_time": fetch_start,
+        "end_time": fetch_end,
+        "retry_count": 0,
+        "error": None if fetch_result.get("status") == "OK" else "fetch_engine error",
+        "output_summary": {
+            "as_of": fetch_result.get("as_of"),
+            "lookback_days": fetch_result.get("lookback_days"),
+            "symbols_requested": len(symbols),
+            "symbols_with_data": len(fetched_symbols),
+            "error_count": len(fetch_errors),
+            "sample_symbol": fetched_symbols[0] if fetched_symbols else None,
+        }
+    })
+
+    # ŞU AN İÇİN indicator_engine hâlâ dummy radar_candidates üretiyor.
+    # fetch_result["data"] ileride indicator_engine için kullanılacak.
+
     # --------------------------------------------------
-    # 2) DUMMY INDICATOR ENGINE → radar_candidates üret
+    # 3) DUMMY INDICATOR ENGINE → radar_candidates üret
     #    (Gerçek indicator_engine hazır olana kadar bu blok kullanılacak.)
     # --------------------------------------------------
     ind_start = now_iso()
@@ -227,7 +279,7 @@ def simulate_pipeline_run() -> None:
     })
 
     # --------------------------------------------------
-    # 3) DUMMY REGIME ENGINE → basit regime_info üret
+    # 4) DUMMY REGIME ENGINE → basit regime_info üret
     # --------------------------------------------------
     reg_start = now_iso()
     regime_info: Dict[str, Any] = {
@@ -255,7 +307,7 @@ def simulate_pipeline_run() -> None:
     })
 
     # --------------------------------------------------
-    # 4) RADAR ENGINE (GERÇEK MOTOR)
+    # 5) RADAR ENGINE (GERÇEK MOTOR)
     # --------------------------------------------------
     radar_start = now_iso()
 
@@ -307,10 +359,16 @@ def simulate_pipeline_run() -> None:
     })
 
     # ---------------------------------------------
-    # 5) diğer modüller (dummy log)
+    # 6) diğer modüller (dummy log)
     # ---------------------------------------------
     for name in module_names:
-        if name in ("snapshot_service", "indicator_engine", "radar_engine", "regime_engine"):
+        if name in (
+            "snapshot_service",
+            "fetch_engine",
+            "indicator_engine",
+            "radar_engine",
+            "regime_engine",
+        ):
             continue
 
         m_start = now_iso()

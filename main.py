@@ -53,11 +53,6 @@ def log_write(module_name: str, entry: dict) -> None:
 
 
 # --------------------------------------------------
-# (GLOBAL STATE KALDIRILDI - YARDIMCI FONKSIYONLAR TEMIZLENDI)
-# --------------------------------------------------
-
-
-# --------------------------------------------------
 # ENDPOINTS
 # --------------------------------------------------
 
@@ -114,3 +109,4 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+

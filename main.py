@@ -5,8 +5,6 @@ import json
 import os
 
 from modules.radar_engine import run_radar_engine
-from modules.fetch_engine import run_fetch_engine
-from modules.indicator_engine import run_indicator_engine  # <--- EKLENDİ
 
 app = Flask(__name__)
 
@@ -143,3 +141,4 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
+

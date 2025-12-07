@@ -84,25 +84,6 @@ def load_symbols() -> List[str]:
 def build_candles_by_symbol(fetch_result: Dict[str, Any]) -> Dict[str, Dict[str, List[Any]]]:
     """
     fetch_engine çıktısını indicator_engine'in istediği candles_by_symbol formatına dönüştürür.
-
-    fetch_result["data"][sym] = [
-        {"date": "YYYY-MM-DD", "open": ..., "high": ..., "low": ..., "close": ..., "volume": ...},
-        ...
-    ]
-
-    dönüş:
-    {
-      sym: {
-        "date": [...],
-        "t": [...],    # epoch (UTC midnight)
-        "o": [...],
-        "h": [...],
-        "l": [...],
-        "c": [...],
-        "v": [...],
-      },
-      ...
-    }
     """
     import time
     from datetime import datetime as dt
@@ -126,7 +107,6 @@ def build_candles_by_symbol(fetch_result: Dict[str, Any]) -> Dict[str, Dict[str,
             ds = str(r.get("date"))
             dates.append(ds)
 
-            # date → epoch (UTC midnight)
             try:
                 dtt = dt.strptime(ds, "%Y-%m-%d")
                 epoch = time.mktime(dtt.timetuple())
@@ -154,31 +134,7 @@ def build_candles_by_symbol(fetch_result: Dict[str, Any]) -> Dict[str, Dict[str,
 
 
 # --------------------------------------------------
-# GLOBAL STATE
-# --------------------------------------------------
-
-pipeline_state: Dict[str, Any] = {
-    "pipeline_status": "IDLE",
-    "start_time": None,
-    "end_time": None,
-    "modules": []
-}
-
-result_state: Dict[str, Any] = {
-    "result_ready": False,
-    "last_run": None,
-    "radar": [],
-    "radar_debug": [],
-    "radar_summary": {},
-    "radar_api": [],
-    "core10": [],
-    "snapshot_data": {}
-}
-
-
-# --------------------------------------------------
-# PIPELINE SIMULATION (with real fetch + indicator + radar)
-# (SİMÜLASYON FONKSİYONU SİLİNDİ)
+# (GLOBAL STATE KALDIRILDI)
 # --------------------------------------------------
 
 
@@ -193,12 +149,20 @@ def root():
 
 @app.route("/status", methods=["GET"])
 def status():
-    return jsonify(pipeline_state), 200
+    # pipeline_state kaldırıldığı için sabit bir dummy response döndürüyoruz
+    return jsonify({
+        "pipeline_status": "DISABLED",
+        "message": "Morning pipeline is removed."
+    }), 200
 
 
 @app.route("/result", methods=["GET"])
 def result():
-    return jsonify(result_state), 200
+    # result_state kaldırıldığı için sabit bir dummy response döndürüyoruz
+    return jsonify({
+        "result_ready": False,
+        "message": "No pipeline results. Morning pipeline is removed."
+    }), 200
 
 
 @app.route("/logs/today", methods=["GET"])

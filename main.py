@@ -53,34 +53,7 @@ def log_write(module_name: str, entry: dict) -> None:
 
 
 # --------------------------------------------------
-# HELPERS
-# --------------------------------------------------
-
-def now_iso() -> str:
-    """Return current UTC time as ISO string."""
-    return datetime.utcnow().isoformat() + "Z"
-
-
-def load_symbols() -> List[str]:
-    """Load symbols from symbols_list.json"""
-    try:
-        path = "symbols_list.json"
-        if not os.path.exists(path):
-            print("symbols_list.json not found.")
-            return []
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                return data
-            else:
-                return []
-    except Exception as e:
-        print("load_symbols ERROR:", e)
-        return []
-
-
-# --------------------------------------------------
-# (GLOBAL STATE KALDIRILDI)
+# (GLOBAL STATE KALDIRILDI - YARDIMCI FONKSIYONLAR TEMIZLENDI)
 # --------------------------------------------------
 
 
@@ -141,4 +114,3 @@ def logs_today():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
-
